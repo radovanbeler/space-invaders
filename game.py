@@ -12,6 +12,7 @@ SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
 
 Coord = collections.namedtuple("Coord", "x y")
+Boundary = collections.namedtuple("Boundary", "lower upper")
 
 
 class Direction(Enum):
@@ -22,13 +23,25 @@ class Direction(Enum):
 
 
 class Ship(pygame.sprite.Sprite):
-    def __init__(self, initial_coord=None):
+    def __init__(self, initial_coord=None, boundary=None):
+        super().__init__()
         self.image = load_image("ship.png", 4)
         self.rect = self.image.get_rect()
         self.speed = 500
+        self.__on_fire = None
         if initial_coord:
             self.rect.centerx = initial_coord.x
             self.rect.centery = initial_coord.y
+        self.boundary = boundary
+
+    def __in_boundary(self, next_rect):
+        if not self.boundary:
+            return True
+
+        return (
+            next_rect.left >= self.boundary.lower
+            and next_rect.right <= self.boundary.upper
+        )
 
     def move(self, direction, delta_time):
         x_offset = 0
@@ -37,7 +50,51 @@ class Ship(pygame.sprite.Sprite):
                 x_offset = int(self.speed * delta_time)
             case Direction.LEFT:
                 x_offset = int(-self.speed * delta_time)
-        self.rect = self.rect.move(x_offset, 0)
+        next_rect = self.rect.move(x_offset, 0)
+        if self.__in_boundary(next_rect):
+            self.rect = next_rect
+
+    def on_fire(self, callback):
+        self.__on_fire = callback
+
+    def fire(self):
+        if self.__on_fire:
+            bullet = "bullet"
+            self.__on_fire(bullet)
+
+
+class Alien(pygame.sprite.Sprite):
+    def __init__(self, initial_coord=None, boundary=None):
+        super().__init__()
+        self.image = load_image("alien.png", 4)
+        self.rect = self.image.get_rect()
+        if initial_coord:
+            self.rect.centerx = initial_coord.x
+            self.rect.centery = initial_coord.y
+        self.speed = 200
+        self.boundary = boundary
+
+    def __in_boundary(self, next_rect):
+        if not self.boundary:
+            return True
+
+        return (
+            next_rect.left >= self.boundary.lower
+            and next_rect.right <= self.boundary.upper
+        )
+
+    def move(self, direction, delta_time):
+        x_offset = 0
+        match direction:
+            case Direction.RIGHT:
+                x_offset = int(self.speed * delta_time)
+            case Direction.LEFT:
+                x_offset = int(-self.speed * delta_time)
+        next_rect = self.rect.move(x_offset, 0)
+        if self.__in_boundary(next_rect):
+            self.rect = next_rect
+        else:
+            self.speed = -self.speed
 
 
 class Game:
@@ -47,20 +104,36 @@ class Game:
 
     def __create_ship(self):
         initial_coord = Coord(SCREEN_WIDTH // 2, int(SCREEN_HEIGHT * 0.75))
-        return Ship(initial_coord)
+        boundary = Boundary(0, SCREEN_WIDTH)
+        return Ship(initial_coord, boundary)
+
+    def __create_alien(self):
+        initial_coord = Coord(SCREEN_WIDTH // 2, int(SCREEN_HEIGHT * 0.5))
+        boundary = Boundary(0, SCREEN_WIDTH)
+        return Alien(initial_coord, boundary)
+
+    def __space_released(self, event):
+        return event.type == pygame.KEYUP and event.key == pygame.K_SPACE
 
     def run(self):
         running = True
         delta_time = 0
         ship = self.__create_ship()
+        ship.on_fire(lambda bullet: print(bullet))
+        alien = self.__create_alien()
 
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                if self.__space_released(event):
+                    ship.fire()
+
+            alien.move(Direction.RIGHT, delta_time)
 
             self.screen.fill("black")
             self.screen.blit(ship.image, ship.rect)
+            self.screen.blit(alien.image, alien.rect)
 
             keys = pygame.key.get_pressed()
             if keys[pygame.K_ESCAPE]:
@@ -72,6 +145,8 @@ class Game:
 
             pygame.display.flip()
             delta_time = self.clock.tick(FPS) / 1000
+
+        pygame.quit()
 
 
 if __name__ == "__main__":
