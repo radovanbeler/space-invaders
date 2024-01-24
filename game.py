@@ -2,6 +2,7 @@ import collections
 from enum import Enum, auto
 
 import pygame
+from pygame.sprite import Group
 
 from utils import load_image
 
@@ -64,7 +65,7 @@ class Ship(pygame.sprite.Sprite):
 
 
 class Alien(pygame.sprite.Sprite):
-    def __init__(self, initial_coord=None, boundary=None):
+    def __init__(self, boundary, initial_coord=None, on_collision=None):
         super().__init__()
         self.image = load_image("alien.png", 4)
         self.rect = self.image.get_rect()
@@ -73,28 +74,61 @@ class Alien(pygame.sprite.Sprite):
             self.rect.centery = initial_coord.y
         self.speed = 200
         self.boundary = boundary
+        self.on_collision = on_collision
+        self.__direction = Direction.RIGHT
 
-    def __in_boundary(self, next_rect):
-        if not self.boundary:
-            return True
-
+    def __within_boundary(self, next_rect):
         return (
             next_rect.left >= self.boundary.lower
             and next_rect.right <= self.boundary.upper
         )
 
-    def move(self, direction, delta_time):
+    def __next_rect(self, delta_time):
         x_offset = 0
-        match direction:
+        y_offset = 0
+        match self.__direction:
             case Direction.RIGHT:
                 x_offset = int(self.speed * delta_time)
+            case Direction.DOWN:
+                y_offset = int(self.speed * delta_time)
             case Direction.LEFT:
                 x_offset = int(-self.speed * delta_time)
-        next_rect = self.rect.move(x_offset, 0)
-        if self.__in_boundary(next_rect):
+        return self.rect.move(x_offset, y_offset)
+
+    def move(self, delta_time):
+        next_rect = self.__next_rect(delta_time)
+        if self.__within_boundary(next_rect):
             self.rect = next_rect
-        else:
-            self.speed = -self.speed
+        elif self.on_collision:
+            self.on_collision()
+
+    def change_direction(self):
+        self.__direction = Direction.LEFT
+
+
+class Aliens:
+    def __init__(self):
+        self.aliens = self.__create_aliens()
+
+    def __on_collision(self):
+        for alien in self.aliens:
+            alien.change_direction()
+
+    def __create_alien(self):
+        initial_coord = Coord(SCREEN_WIDTH // 2, int(SCREEN_HEIGHT * 0.5))
+        boundary = Boundary(0, SCREEN_WIDTH)
+        return Alien(boundary, initial_coord, self.__on_collision)
+
+    def __create_aliens(self):
+        alien = self.__create_alien()
+        return [alien]
+
+    def move(self, delta_time):
+        for alien in self.aliens:
+            alien.move(delta_time)
+
+    def __iter__(self):
+        return iter(self.aliens)
 
 
 class Game:
@@ -107,11 +141,6 @@ class Game:
         boundary = Boundary(0, SCREEN_WIDTH)
         return Ship(initial_coord, boundary)
 
-    def __create_alien(self):
-        initial_coord = Coord(SCREEN_WIDTH // 2, int(SCREEN_HEIGHT * 0.5))
-        boundary = Boundary(0, SCREEN_WIDTH)
-        return Alien(initial_coord, boundary)
-
     def __space_released(self, event):
         return event.type == pygame.KEYUP and event.key == pygame.K_SPACE
 
@@ -120,7 +149,7 @@ class Game:
         delta_time = 0
         ship = self.__create_ship()
         ship.on_fire(lambda bullet: print(bullet))
-        alien = self.__create_alien()
+        aliens = Aliens()
 
         while running:
             for event in pygame.event.get():
@@ -129,11 +158,12 @@ class Game:
                 if self.__space_released(event):
                     ship.fire()
 
-            alien.move(Direction.RIGHT, delta_time)
+            aliens.move(delta_time)
 
             self.screen.fill("black")
             self.screen.blit(ship.image, ship.rect)
-            self.screen.blit(alien.image, alien.rect)
+            for alien in aliens:
+                self.screen.blit(alien.image, alien.rect)
 
             keys = pygame.key.get_pressed()
             if keys[pygame.K_ESCAPE]:
