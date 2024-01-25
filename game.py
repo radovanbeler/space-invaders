@@ -72,10 +72,13 @@ class Alien(pygame.sprite.Sprite):
         if initial_coord:
             self.rect.centerx = initial_coord.x
             self.rect.centery = initial_coord.y
-        self.speed = 200
+        self.speed = 300
         self.boundary = boundary
         self.on_collision = on_collision
+        self.__prev_direction = None
         self.__direction = Direction.RIGHT
+        self.__down_count = 0
+        self.__down_count_limit = 10
 
     def __within_boundary(self, next_rect):
         return (
@@ -95,15 +98,32 @@ class Alien(pygame.sprite.Sprite):
                 x_offset = int(-self.speed * delta_time)
         return self.rect.move(x_offset, y_offset)
 
+    def __move_horizontally(self):
+        if self.__prev_direction == Direction.RIGHT:
+            self.__direction = Direction.LEFT
+        else:
+            self.__direction = Direction.RIGHT
+
     def move(self, delta_time):
         next_rect = self.__next_rect(delta_time)
+
+        if self.__direction == Direction.DOWN:
+            if self.__down_count < self.__down_count_limit:
+                self.rect = next_rect
+                self.__down_count += 1
+                return
+            else:
+                self.__move_horizontally()
+                self.__down_count = 0
+
         if self.__within_boundary(next_rect):
             self.rect = next_rect
         elif self.on_collision:
             self.on_collision()
 
     def change_direction(self):
-        self.__direction = Direction.LEFT
+        self.__prev_direction = self.__direction
+        self.__direction = Direction.DOWN
 
 
 class Aliens:
