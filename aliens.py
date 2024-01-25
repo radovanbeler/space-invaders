@@ -53,12 +53,11 @@ class Alien(pygame.sprite.Sprite):
         self.boundary = boundary
         self.on_collision = on_collision
         self.state = AlienStateMachine()
-        self.down_count = 0
-        self.down_count_limit = 10
+        self.counter = self.Counter(1, 10)
 
     def __within_boundary(self, next_rect):
         return (
-            next_rect.left >= self.boundary.lower
+            self.boundary.lower <= next_rect.left
             and next_rect.right <= self.boundary.upper
         )
 
@@ -76,13 +75,12 @@ class Alien(pygame.sprite.Sprite):
 
     def move(self, delta_time):
         direction = self.state.direction()
-
         if direction == Direction.DOWN:
-            if self.down_count >= self.down_count_limit:
-                self.state.next()
-                self.down_count = 0
+            if self.counter.in_range():
+                self.counter.increment()
             else:
-                self.down_count += 1
+                self.state.next()
+                self.counter.reset()
 
         next_rect = self.__next_rect(direction, delta_time)
         if self.__within_boundary(next_rect):
@@ -90,8 +88,23 @@ class Alien(pygame.sprite.Sprite):
         elif self.on_collision:
             self.on_collision()
 
-    def change_direction(self):
+    def move_down(self):
         self.state.next()
+
+    class Counter:
+        def __init__(self, start, end):
+            self.start = start
+            self.current = start
+            self.end = end
+
+        def increment(self):
+            self.current += 1
+
+        def reset(self):
+            self.current = self.start
+
+        def in_range(self):
+            return self.current <= self.end
 
 
 class Aliens:
@@ -100,7 +113,7 @@ class Aliens:
 
     def __on_collision(self):
         for alien in self.aliens:
-            alien.change_direction()
+            alien.move_down()
 
     def __create_alien(self):
         initial_coord = Coord(SCREEN_WIDTH // 2, int(SCREEN_HEIGHT * 0.5))
